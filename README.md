@@ -54,7 +54,17 @@ This will generate a plot like below, with clustered reads and modifications in 
 
 ![alt text](https://github.com/cafelton/modbamvisualization/blob/main/no-threshold-reads.png?raw=true)
 
-If you want a clearer image, I reccommend setting a threshold:
+If you want a clearer image, I reccommend setting a threshold. 0.7 tends to be good, although if you have positive and negative control data, you can run the below command and see where the right hand peak starts.
+
+python[3+] makeScoreDistFromModBam.py pos.bam neg.bam
+
+![alt text](https://github.com/cafelton/modbamvisualization/blob/main/ScoreDist.png?raw=true)
+
+If you don't have control data, you can also just run 
+
+python[3+] makeScoreDistFromModBam.py file.bam
+
+and see if you can spot the right hand peak from that. Regardless, once you figure out a threshold, you can run:
 
 python[3+] modbamvisualization.py -m file-moddata.txt -r "chrN:startpos-stoppos" -p -c 4 -t 0.7
 
