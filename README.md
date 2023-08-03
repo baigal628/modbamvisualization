@@ -17,23 +17,31 @@ Visualizing modified bam files and nucleosome bed files, as well as doing some s
 ## Options
 ```bash
 options:
-
-  -h, --help            show this help message and exit  
+  -h, --help            show this help message and exit
   -b B, --bamfile B     modified bam file, should be indexed. Can be filtered to locus or not. Optimal if name does not include dashes.
+  -y Y, --modtype Y     type of modification to visualize. This is only required if you are processing a .bam file. Allowable codes are: 5mC,
+                        5hmC, 5fC, 5caC, 5hmU, 5fU, 5caU, 6mA, 8oxoG, Xao
   -m M, --moddatafile M
                         data file from earlier run of this program, contains readnames and modification code for each position
   -n N, --nucbed N      nucleosomes.bed file from cawlr sma or from modbampredictnuc-sw.py
-  -k, --pca             whether to plot PCA and run kmeans clustering (default clusters: 2, specify otherwise with -c)
+  -k, --pca             whether to plot PCA and kmeans clustering (default clusters: 2, specify otherwise with -c)
   -p, --plot            whether to plot reads with modified positions, will cluster, outputs pdf
   -o, --overlay         whether to plot reads with modifications overlayed with nucleosome positions, required -n
   -x, --remove          whether to remove highly/chaotically modified reads. This will only work if you specify a threshold.
-  -t T, --threshold T   threshold between 0 and 1 to binarize modifications, mod score above this are called as true. Reccommend
-                        running predictthreshold.py or looking at score dist of positive and negative controls to determine this. If
-                        this is not set, will not binarize for plotting and the plotting will run much slower.
-  -c C, --clusters C    number of clusters for plotting, default 2, reccommend looking at PCA to help determine. Reads will first be clustered by strand, then subclustered by c.
+  -t T, --threshold T   threshold between 0 and 1 to binarize modifications, mod score above this are called as true. Reccommend running
+                        predictthreshold.py or looking at score dist of positive and negative controls to determine this. If this is not set,
+                        will not binarize for plotting and the plotting will run much slower.
+  -c C, --clusters C    number of clusters for plotting, default 2, reccommend looking at PCA to help determine
   -r R, --region R      region to calculate modification for and plot "chrN:startpos-stoppos"
-   -y Y, --modtype Y     type of modification to visualize. This is only required if you are processing a .bam file. Allowable codes
-                        are: 5mC, 5hmC, 5fC, 5caC, 5hmU, 5fU, 5caU, 6mA, 8oxoG, Xao
+  -g G, --genes G       gene annotation in .bed format for visualization; optional. Bed file format should be one line per gene; fields
+                        beyond the sixth column will not be processed
+  -a A, --aggregatenucpred A
+                        plot one prediction of nucleosome positions for each cluster. Must provide threshold file generated from
+                        predictthreshold.py containing predicted threshold, low threshold, and pos prob. You can make this file yourself as
+                        long as you follow the same formatting. This will also plot a combined nucleosome prediction for all clusters except the most modified ones, which will only work if c > 1.
+  -s, --nosmoothing     smoothing means modifications are visualized as wider blocks where possible. This makes them easier to see. No
+                        smoothing means you will see the modified positions exactly as represented in the bam file. This may slow plotting
+                        down a little
 ```
 
 ## Visualization basics
@@ -69,6 +77,8 @@ If you want a clearer image, I reccommend setting a threshold. 0.7 tends to be a
 ```bash
 python predictthreshold.py -p pos.bam -n neg.bam
 ```
+
+Note that the third line of the output file is a good shorthand for how good the separation between your positive and negative controls is - the closer this number is to 1, the better distinction there is between open and closed chromatin and the better the nucleosome predictions will be.
 
 You can also run this without control data and instead use -s sample.bam, but this is much less robust and not reccommended.
 
@@ -135,11 +145,22 @@ options:
 To actually visualize nucleosomes, you just add the -o and -n options to your visualization command as below:
 
 ```bash
-python modbamvisualization.py -m file-moddata.txt -r "chrN:startpos-stoppos" -c 4 -t 0.7 -o -n file_nucleosomes.bed
+python modbamvisualization.py -m file-moddata.txt -r "chrN:startpos-stoppos" -c 3 -t 0.7 -o -n file_nucleosomes.bed
 ```
 
 The open chromatin can be seen where there are red modifications and a lack of grey nucleosomes.
 
 ![alt text](https://github.com/cafelton/modbamvisualization/blob/main/nuc-threshold.png?raw=true)
 
+If you also want to generate nucleosome predictions for each cluster and for everything combined, you can do that within modbamvisualization by running:
 
+```bash
+python modbamvisualization.py -m file-moddata.txt -r "chrN:startpos-stoppos" -c 2 -t 0.7 -o -n file_nucleosomes.bed -a predictedThreshold.tsv
+```
+
+You can also run the -a option without having already predicted nucleosome positions for the individual reads:
+
+```bash
+python modbamvisualization.py -m file-moddata.txt -r "chrN:startpos-stoppos" -c 2 -t 0.7 -o -a predictedThreshold.tsv -g genes.bed
+```
+![alt text](https://github.com/cafelton/modbamvisualization/blob/main/plotwithclusternucpred.png?raw=true)
