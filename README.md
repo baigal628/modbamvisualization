@@ -1,10 +1,20 @@
 # modbamvisualization
 Visualizing modifications from .bam file
 
-### usage: python[3+] modbamvisualization.py -b file.bam OR -m file-moddata.txt -r "chrN:startpos-stoppos" [options]
+
 
 Visualizing modified bam files and nucleosome bed files, as well as doing some simple nucleosome prediction
 
+## Table of Contents
+
+- Options
+- Visualization basics
+- Understanding modification score distributions and thresholds
+- Predicting and visualizing nucleosomes
+  - Nucleosome prediction options
+  - Visualizing nucleosomes
+
+## Options
 ```bash
 options:
 
