@@ -18,14 +18,15 @@ typesOfMods = {'5mC':[('C', 0, 'm')], '5hmC': [('C', 0, 'h')], '5fC': [('C', 0, 
 
 allmodcount = []
 outname = []
-for file in range(len(sys.argv)-1):
-    outname.append('.'.join(sys.argv[file+1].split('.')[:-1]))
+for file in range(2, len(sys.argv)):
+    outname.append('.'.join(sys.argv[file].split('/')[-1].split('.')[:-1]))
+    print(outname)
     modCount = [0 for x in range(255)]
     allmods, lowmods, highmods = [], [], []
-    samfile = pysam.AlignmentFile(sys.argv[file+1],"rb")
+    samfile = pysam.AlignmentFile(sys.argv[file],"rb")
     for s in samfile:
         if not s.is_secondary and s.is_mapped:
-            posstag = typesOfMods[args.y]
+            posstag = typesOfMods[sys.argv[1]]
             if s.is_reverse: posstag = [(x[0], 1, x[2]) for x in posstag]
             ml = None
             for t in posstag:
@@ -38,20 +39,20 @@ for file in range(len(sys.argv)-1):
             # print(ml)
             for i in ml:
                 modCount[i[1]-1] += 1
-                allmods.append(i[1])
-                if i[1] <= 127: lowmods.append(i[1])
-                else: highmods.append(i[1])
+                # allmods.append(i[1])
+                # if i[1] <= 127: lowmods.append(i[1])
+                # else: highmods.append(i[1])
     allmodcount.append(modCount)
     samfile.close()
-    print('done processing ' + sys.argv[file+1])
+    print('done processing ' + sys.argv[file])
 
 plt.figure()
-filenamesforout = ''
+# filenamesforout = ''
 for i in range(len(allmodcount)):
     tot = float(sum(allmodcount[i]))
     allmodcount[i] = [x/tot for x in allmodcount[i]]
-    plt.plot([x/255 for x in list(range(255))], allmodcount[i], label = '.'.join(sys.argv[i+1].split('.')[:-1]))
-    filenamesforout += '.'.join(sys.argv[i+1].split('.')[:-1]) + '-'
+    plt.plot([x/255 for x in list(range(255))], allmodcount[i], label = '.'.join(sys.argv[i+2].split('/')[-1].split('.')[:-1]))
+    # filenamesforout += '.'.join(sys.argv[i+1].split('.')[:-1]) + '-'
 plt.legend()
 plt.savefig('-'.join(outname) + '-scoreDist.png', dpi=600)
 
