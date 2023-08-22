@@ -13,6 +13,8 @@ Visualizing modified bam files and nucleosome bed files, as well as doing some s
 - Predicting and visualizing nucleosomes
   - Nucleosome prediction options
   - Visualizing nucleosomes
+- Aggregating modified position calling as a bedgraph
+  - Calling peaks from this data
 
 ## Options
 ```bash
@@ -186,3 +188,41 @@ You can also run the -a option without having already predicted nucleosome posit
 python modbamvisualization.py -m file-moddata.txt -r "chrN:startpos-stoppos" -c 2 -t 0.7 -o -a predictedThreshold.tsv -g genes.bed
 ```
 ![alt text](https://github.com/cafelton/modbamvisualization/blob/main/plotwithclusternucpred.png?raw=true)
+
+## Aggregating modified position calling as a bedgraph
+
+```bash
+usage: python[3+] modbamvisualization.py -b file.bam OR -m file-moddata.txt -r "chrN:startpos-stoppos" [options]
+
+Visualizing modified bam files and nucleosome bed files
+
+options:
+  -h, --help            show this help message and exit
+  -b B, --bamfile B     modified bam file, should be indexed. Can be filtered to locus or not. Optimal if name does not include
+                        dashes.
+  -y Y, --modtype Y     type of modification to visualize. This is only required if you are processing a .bam file. Allowable
+                        codes are: 5mC, 5hmC, 5fC, 5caC, 5hmU, 5fU, 5caU, 6mA, 8oxoG, Xao
+  -r R, --region R      region to calculate modification for and plot "chrN:chrlen" OR "chrN:startpos-stoppos"
+  -t T, --threshold T   threshold between 0 and 1 to binarize modifications, mod score above this are called as true.
+                        Reccommend running predictthreshold.py or looking at score dist of positive and negative controls to
+                        determine this.
+  -e E, --clusterfile E
+                        tsv file where each line has a readname column and a cluster label column. Requires -c manual
+  -s, --smoothing       whether to smooth modifications curve
+```
+
+### Calling peaks from this data
+
+```bash
+usage: python[3+] modbamvisualization.py -b file.bam OR -m file-moddata.txt -r "chrN:startpos-stoppos" [options]
+
+Visualizing modified bam files and nucleosome bed files
+
+options:
+  -h, --help           show this help message and exit
+  -b B, --bedgraph B   bedgraph file
+  -t T, --threshold T  threshold between 0 and 1 to binarize modifications, mod score above this are called as true. Reccommend
+                       running predictthreshold.py or looking at score dist of positive and negative controls to determine
+                       this.
+  -r R, --region R     region to calculate modification for and plot "chrN:chrlen" OR "chrN:startpos-stoppos"
+```
