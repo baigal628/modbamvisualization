@@ -22,35 +22,45 @@ Visualizing modified bam files and nucleosome bed files
 
 options:
   -h, --help            show this help message and exit
-  -b B, --bamfile B     modified bam file, should be indexed. Can be filtered to locus or not. Optimal if name does not include
-                        dashes.
-  -y Y, --modtype Y     type of modification to visualize. This is only required if you are processing a .bam file. Allowable codes
+  -b B, --bamfile B     modified bam file, should be indexed. Can be filtered to locus or not.
+                        Optimal if name does not include dashes.
+  -y Y, --modtype Y     type of modification to visualize. This is only required
+                        if you are processing a .bam file. Allowable codes
                         are: 5mC, 5hmC, 5fC, 5caC, 5hmU, 5fU, 5caU, 6mA, 8oxoG, Xao
   -m M, --moddatafile M
-                        data file from earlier run of this program, contains readnames and modification code for each position
+                        data file from earlier run of this program,
+                        contains readnames and modification code for each position
   -n N, --nucbed N      nucleosomes.bed file from cawlr sma or from modbampredictnuc-sw.py
-  -k, --pca             whether to output readnames to clusters file and plot PCA and kmeans clustering (the plot is only if using
-                        kmeans clustering in -c)
+  -k, --pca             whether to output readnames to clusters file and plot PCA and
+                        kmeans clustering (the plot is only if using kmeans clustering in -c)
   -p, --plot            whether to plot reads with modified positions, will cluster, outputs pdf
-  -o, --overlay         whether to plot reads with modifications overlayed with nucleosome positions, required -n
-  -x, --remove          whether to remove highly/chaotically modified reads. This will only work if you specify a threshold.
-  -t T, --threshold T   threshold between 0 and 1 to binarize modifications, mod score above this are called as true. Reccommend
-                        running predictthreshold.py or looking at score dist of positive and negative controls to determine this. If
+  -o, --overlay         whether to plot reads with modifications overlayed
+                        with nucleosome positions, required -n
+  -x, --remove          whether to remove highly/chaotically modified reads.
+                        This will only work if you specify a threshold.
+  -t T, --threshold T   threshold between 0 and 1 to binarize modifications,
+                        mod score above this are called as true. Reccommend
+                        running predictthreshold.py or looking at score dist
+                        of positive and negative controls to determine this. If
                         this is not set, will not binarize for plotting and the plotting will run much slower.
-  -c C, --clusters C    Options: manual, promoter, or any number n, "manual" means you will provide a file with premade cluster
-                        assignments using -e, "promoter" means to do manual clustering by promoter locations, requires -g. A number
-                        means do kmeans clustering with this many clusters, default 2, reccommend looking at PCA to help determine
+  -c C, --clusters C    Options: manual, promoter, or any number n,
+                        "manual" means you will provide a file with premade cluster assignments using -e,
+                        "promoter" means to do manual clustering by promoter locations, requires -g.
+                        A number means do kmeans clustering with this many clusters, default 2, reccommend looking at PCA to help determine
   -r R, --region R      region to calculate modification for and plot "chrN:startpos-stoppos"
-  -g G, --genes G       gene annotation in .bed format for visualization; optional. Bed file format should be one line per gene;
+  -g G, --genes G       gene annotation in .bed format for visualization; optional.
+                        Bed file format should be one line per gene;
                         fields beyond the sixth column will not be processed
   -a A, --aggregatenucpred A
-                        plot one prediction of nucleosome positions for each cluster. Must provide threshold file generated from
-                        predictthreshold.py containing predicted threshold, low threshold, and pos prob. You can make this file
-                        yourself as long as you follow the same formatting.
+                        plot one prediction of nucleosome positions for each cluster.
+                        Must provide threshold file generated from
+                        predictthreshold.py containing predicted threshold, low threshold, and pos prob.
+                        You can make this file yourself as long as you follow the same formatting.
   -s S, --smoothingtype S
-                        Allowed options: none, some, full: smoothing means modifications are visualized as wider blocks where
-                        possible. This makes them easier to see. No smoothing means you will see the modified positions exactly as
-                        represented in the bam file. This may slow plotting down a little
+                        Allowed options: none, some, full:
+                        smoothing means modifications are visualized as wider blocks where possible.
+                        This makes them easier to see. No smoothing means you will see the modified
+                        positions exactly as represented in the bam file. This may slow plotting down a little
   -d D, --bedgraph D    bedgraph file with nucleosome positions
   -e E, --clusterfile E
                         tsv file where each line has a readname column and a cluster label column. Requires -c manual
