@@ -8,7 +8,7 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 import seaborn as sns
 import pandas as pd
-import os
+import os, statistics
 import argparse
 from scipy.signal import savgol_filter
 from modbampredictnucsw import getThreshFromFile, predictOpenChromatin, predictNucleosomePos
@@ -25,7 +25,7 @@ parser.add_argument('-m', '--moddatafile', action='store', dest='m',
 parser.add_argument('-n', '--nucbed', action='store', dest='n',
                     help='nucleosomes.bed file from cawlr sma or from modbampredictnuc-sw.py')
 parser.add_argument('-k', '--pca', action='store_true', dest='k',
-                    help='whether to plot PCA and kmeans clustering (default clusters: 2, specify otherwise with -c)')
+                    help='whether to output readnames to clusters file and plot PCA and kmeans clustering (the plot is only if using kmeans clustering in -c)')
 parser.add_argument('-p', '--plot', action='store_true', dest='p',
                     help='whether to plot reads with modified positions, will cluster, outputs pdf')
 parser.add_argument('-o', '--overlay', action='store_true', dest='o',
@@ -35,15 +35,19 @@ parser.add_argument('-x', '--remove', action='store_true', dest='x',
 parser.add_argument('-t', '--threshold', action='store', dest='t',
                     help='threshold between 0 and 1 to binarize modifications, mod score above this are called as true. Reccommend running predictthreshold.py or looking at score dist of positive and negative controls to determine this. If this is not set, will not binarize for plotting and the plotting will run much slower.')
 parser.add_argument('-c', '--clusters', action='store', dest='c', default='2',
-                    help='number of clusters for plotting, default 2, reccommend looking at PCA to help determine')
+                    help='Options: manual, promoter, or any number n, "manual" means you will provide a file with premade cluster assignments using -e, "promoter" means to do manual clustering by promoter locations, requires -g. A number means do kmeans clustering with this many clusters, default 2, reccommend looking at PCA to help determine')
 parser.add_argument('-r', '--region', action='store', dest='r',
                     help='region to calculate modification for and plot "chrN:startpos-stoppos"')
 parser.add_argument('-g', '--genes', action='store', dest='g',
                     help='gene annotation in .bed format for visualization; optional. Bed file format should be one line per gene; fields beyond the sixth column will not be processed')
 parser.add_argument('-a', '--aggregatenucpred', action='store', dest='a',
                     help='plot one prediction of nucleosome positions for each cluster. Must provide threshold file generated from predictthreshold.py containing predicted threshold, low threshold, and pos prob. You can make this file yourself as long as you follow the same formatting.')
-parser.add_argument('-s', '--nosmoothing', action='store_true', dest='s',
-                    help='smoothing means modifications are visualized as wider blocks where possible. This makes them easier to see. No smoothing means you will see the modified positions exactly as represented in the bam file. This may slow plotting down a little')
+parser.add_argument('-s', '--smoothingtype', action='store', default='some', dest='s',
+                    help='Allowed options: none, some, full: smoothing means modifications are visualized as wider blocks where possible. This makes them easier to see. No smoothing means you will see the modified positions exactly as represented in the bam file. This may slow plotting down a little')
+parser.add_argument('-d', '--bedgraph', action='store', dest='d',
+                    help='bedgraph file with nucleosome positions')
+parser.add_argument('-e', '--clusterfile', action='store', dest='e',
+                    help='tsv file where each line has a readname column and a cluster label column. Requires -c manual')
 
 args = parser.parse_args()
 #k make PCA/cluster
@@ -75,7 +79,7 @@ def getcomp(seq):
 coltocode = {(1.,1.,1.):0, (.8,.8,.8):0, (0., 0., 1.):0, (1., 0., 0.):3, (0.5, 0.5, 1.):0,(0.4, 0.8, 1.):0,(0.4, 0.6, 1.):0, (1., 0.5, 0.5):3}
 codetocol = {0:(1.,1.,1.),1:(0.4, 0.8, 1.),2:(0.4,0.6, 1.),3:(1., 0., 0.)}
 codeToSimpCode = {0:0, 1:0, 2:0, 3:1}
-numToc = {-1.:'grey', 0.:'blue', 1.:'orange', 2.:'green', 3.:'purple', 4.:'red', 5.:'yellow'}
+numToc = {-1.:'grey', 0.:'blue', 1.:'orange', 2.:'green', 3.:'purple', 4.:'red', 5.:'yellow', 6.:'greenyellow', 7.:'aqua', 8.:'deeppink', 9.:'goldenrod', 10.:'darkorchid'}
 
 
 if not args.r:
@@ -85,7 +89,7 @@ if not (args.b or args.m):
 # if args.o and not args.n:
 #     raise Exception('if you want to overlay nucleosomes, you must provide a nucleosomes.bed file')
 
-numclust = int(args.c)
+# numclust = int(args.c)
 chr, temp = args.r.split(':')
 qstart, qend = temp.split('-')
 qstart, qend = int(qstart), int(qend)
@@ -139,18 +143,18 @@ elif args.b:
                         print(readname, 'does not have modification information', s.modified_bases.keys())
                         continue
 
-
                     if s.has_tag('MM'):
                         skippedBase = -1 if s.get_tag('MM').split(',', 2)[0][-1] == '?' else 0
                     elif s.has_tag('Mm'):
                         skippedBase = -1 if s.get_tag('Mm').split(',', 2)[0][-1] == '?' else 0
                     else:
-                        pass
+                        continue
 
                     seq = s.query_sequence
                     seqlen = len(seq)
                     if s.is_reverse:  ###need to get compliment of sequence, but not reverse!!
                         seq = getcomp(seq)
+
                     seqApos = []
                     c = 0
                     for b in seq:
@@ -159,13 +163,10 @@ elif args.b:
                         c += 1
 
                     c = 0
+                    mlpos = set([x[0] for x in ml])
                     for i in seqApos:
-                        if c not in ml:
-                            ml.insert(c, (i, skippedBase))
-                        elif i != ml[c][0]:
-                            ml.insert(c, (i, skippedBase))
-                        c += 1
-
+                        if i not in mlpos:
+                            ml.append((i, skippedBase))
                     ml = dict(ml)
 
                     ref, quer = 0, 0
@@ -194,46 +195,182 @@ elif args.b:
         out.close()
         print('done parsing region in bam file')
 
+
+genes = []
+openAndAdjPos = []
+if args.g: #and (args.p or args.o):
+    for line in open(args.g):
+        line = line.rstrip().split('\t')
+        if line[0].lstrip('chr') == chr.lstrip('chr'):
+            geneleft, generight = int(line[1]), int(line[2])
+            if geneleft < qstart and qstart < generight < qend: geneleft = qstart
+            elif qstart < geneleft < qend  and generight > qend: generight = qend
+            elif geneleft < qstart and generight > qend: geneleft, generight = qstart, qend
+            # if line[3] == 'PHO5': print(geneleft, generight, qstart, qend)
+            if geneleft >= qstart and generight <= qend:
+                # print(geneleft, generight, line[3])
+                mydircode = 2 if line[5] == '+' else 1
+                genes.append([geneleft, generight-geneleft, mydircode, line[3]])
+    print('done loading genes')
+    # print(genes)
+    genes.sort()
+
+    if args.c == 'promoter': ###identify promoter regions to cluster on
+        for i in range(len(genes)):
+            if genes[i][2] == 2 and genes[i][0] > qstart: #gene in positive direction
+                promend = genes[i][0] - qstart
+                promstart = min((qstart, genes[i][0] - 1000))-qstart if i == 0 else max((genes[i][0] - min((1000, genes[i][0] - (genes[i-1][0]+genes[i-1][1]))), qstart)) - qstart
+                genecompstart = genes[i][0] - qstart
+                genecompend = min(genes[i][0] + min((1000, genes[i][1])), qend) - qstart
+                openAndAdjPos.append(((promstart, promend), (genecompstart, genecompend)))
+            elif genes[i][2] == 1 and genes[i][0] + genes[i][1] < qend: #gene is in negative direction
+                promstart = genes[i][0] + genes[i][1] - qstart
+                promend = min((qend, genes[i][0] + genes[i][1] + 1000)) -qstart if i == len(genes) - 1 else min((genes[i+1][0], genes[i][0] + genes[i][1] + 1000, qend)) - qstart
+                genecompend = genes[i][0] + genes[i][1] - qstart
+                genecompstart = max((qstart, genes[i][0] + genes[i][1] -1000)) - qstart if i ==0 else max((genes[i][0] + genes[i][1] -1000, genes[i-1][0]+genes[i-1][1], qstart)) - qstart    # genes[i][0] + min((1000, genes[i][1]))
+                openAndAdjPos.append(((promstart, promend), (genecompstart, genecompend)))
+
+
+
 clusterlabels = []
 clusterReads = {}
+clustertoreads = {}
+
+
 if args.k or args.p or args.o or args.a: ##getting clustering done
     modmatrix = np.array(modmatrix)
-    pca = PCA(n_components=2)
-    pca_features = pca.fit_transform(modmatrix)
-    pca_df = pd.DataFrame(data=pca_features, columns=['PC1', 'PC2'])
 
-    kmeans = KMeans(init="k-means++", n_clusters=2, n_init=4)
-    kmeans.fit(pca_features)
-    clusterlabels = kmeans.labels_.astype(float)
-
-
-    # print(min(clusterlabels), max(clusterlabels))
-    subclust = [[] for i in range(2)]
-    subclustreadnames = [[] for i in range(2)]
-    readnametopos = {}
-    for i in range(len(modmatrix)):
-        subclust[int(clusterlabels[i])].append(modmatrix[i])
-        subclustreadnames[int(clusterlabels[i])].append(readnames[i])
-        readnametopos[readnames[i]] = i
-    kmeans = KMeans(init="k-means++", n_clusters=numclust, n_init=4)
-    clusterlabels = [0 for i in range(len(readnames))]
-    fig, axs = plt.subplots(1, 2)
-    for i in range(2):
-        thismat = np.array(subclust[i])
-        pca_features = pca.fit_transform(thismat)
+    if args.x or args.c.isdigit(): ###if want to remove highly methylated reads
+        pca = PCA(n_components=2)
+        pca_features = pca.fit_transform(modmatrix)
         pca_df = pd.DataFrame(data=pca_features, columns=['PC1', 'PC2'])
+
+        kmeans = KMeans(init="k-means++", n_clusters=2, n_init=4)
         kmeans.fit(pca_features)
-        theselabels = kmeans.labels_.astype(float)
-        for j in range(len(subclustreadnames[i])):
-            thislabel = str(int(i)) + '.' + str(int(theselabels[j]))
-            clusterlabels[readnametopos[subclustreadnames[i][j]]] = thislabel
-            if args.a: #want to predict nucleosomes for clusters
+        clusterlabels = kmeans.labels_.astype(float)
+
+        subclust = [[] for i in range(2)]
+        subclustreadnames = [[] for i in range(2)]
+        readnametopos = {}
+        for i in range(len(modmatrix)):
+            subclust[int(clusterlabels[i])].append(modmatrix[i])
+            subclustreadnames[int(clusterlabels[i])].append(readnames[i])
+            readnametopos[readnames[i]] = i
+
+        clusterlabels = [-1 for i in range(len(readnames))]
+        fig, axs = plt.subplots(1, 2)
+        for i in range(2):
+            ###cluster based on methylation levels
+            thismat = np.array(subclust[i])
+            pca_features = pca.fit_transform(thismat)
+            pca_df = pd.DataFrame(data=pca_features, columns=['PC1', 'PC2'])
+            kmeans.fit(pca_features)
+            theselabels = kmeans.labels_.astype(float)
+
+            ###identify highly methylated cluster
+            c1 = [sum(subclust[i][x]) for x in range(len(theselabels)) if theselabels[x] == 0.0]
+            c2 = [sum(subclust[i][x]) for x in range(len(theselabels)) if theselabels[x] == 1.0]
+            c1avg, c2avg = sum(c1)/len(c1), sum(c2)/len(c2)
+            goodlabel = 0.0 if c1avg < c2avg else 1.0
+
+            ####Remove highly methylated cluster
+            goodnames = [subclustreadnames[i][x] for x in range(len(theselabels)) if theselabels[x] == goodlabel]
+            if args.c == 'promoter' or args.c == 'manual':
+                for j in range(len(goodnames)):
+                    clusterlabels[readnametopos[goodnames[j]]] = 1
+            elif args.c.isdigit():
+                numclust = int(args.c)
+                kmeans2 = KMeans(init="k-means++", n_clusters=numclust, n_init=4)
+                goodmat = [subclust[i][x] for x in range(len(theselabels)) if theselabels[x] == goodlabel]
+                ####Better cluster the remaining cluster based on user-defined number of clusters
+                thismat = np.array(goodmat)
+                pca_features = pca.fit_transform(thismat)
+                pca_df = pd.DataFrame(data=pca_features, columns=['PC1', 'PC2'])
+                kmeans2.fit(pca_features)
+                theselabels = kmeans2.labels_.astype(float)
+                for j in range(len(goodnames)):
+                    thislabel = str(int(i)) + '.' + str(int(theselabels[j]))
+                    clusterlabels[readnametopos[goodnames[j]]] = thislabel
+                    if args.a:  # want to predict nucleosomes for clusters
+                        if thislabel not in clusterReads: clusterReads[thislabel] = [0 for x in range(plotrange)]
+                        clusterReads[thislabel] = [x + y for x, y in zip(clusterReads[thislabel], modmatrix[readnametopos[goodnames[j]]])]
+                axs[i].scatter(pca_features[:, 0], pca_features[:, 1], c=[numToc[x] for x in theselabels], alpha=0.3)
+
+        if args.k and not args.e:
+            plt.savefig('-'.join([fileprefix, chr, str(qstart), str(qend)]) + '-kmeans-cluster.png', dpi=600)
+
+        ####Remove reads in low clusters from matrix
+        modmatrix = [modmatrix[x] for x in range(len(clusterlabels)) if clusterlabels[x] != -1]
+        readdir = [readdir[x] for x in range(len(clusterlabels)) if clusterlabels[x] != -1]
+        readnames = [readnames[x] for x in range(len(clusterlabels)) if clusterlabels[x] != -1]
+        if args.c.isdigit(): clusterlabels = [x for x in clusterlabels if x != -1]
+        elif args.c == 'promoter' or args.c == 'manual': clusterlabels = []
+
+    if args.c == 'manual':
+        readtoclusterlabel = {}
+        for line in open(args.e):
+            r, cl = line.rstrip().split('\t')
+            readtoclusterlabel[r] = cl
+        for i in range(len(readnames)):
+            r = readnames[i]
+            thislabel = readtoclusterlabel[r]
+            clusterlabels.append(thislabel)
+            if args.a:  # want to predict nucleosomes for clusters
                 if thislabel not in clusterReads: clusterReads[thislabel] = [0 for x in range(plotrange)]
-                clusterReads[thislabel] = [x + y for x, y in zip(clusterReads[thislabel], modmatrix[readnametopos[subclustreadnames[i][j]]])]
-        axs[i].scatter(pca_features[:, 0], pca_features[:, 1], c=[numToc[x] for x in theselabels], alpha=0.3)
-    if args.k:
-        plt.savefig('-'.join([fileprefix, chr, str(qstart), str(qend)]) + '-kmeans-cluster-subcluster.png', dpi=600)
+                clusterReads[thislabel] = [x + y for x, y in zip(clusterReads[thislabel], modmatrix[i])]
+
+    elif args.c == 'promoter':
+        modchunks, adjchunks = [], []
+        for i in range(len(modmatrix)):
+            thismat = modmatrix[i]
+            regiongroups = []
+            currstart = 0
+            for region in openAndAdjPos:
+                modinprom = []
+                currstart = region[0][0]
+                while currstart < region[0][1]-25:
+                    modprob = thismat[currstart:currstart+25]
+                    onlyAs = [x for x in modprob if x != -1]
+                    # if currstart % 100 == 0: modpeaks.append(sum(onlyAs))
+                    if len(onlyAs) >= 5:
+                        if sum(onlyAs) / len(onlyAs) >= threshold: modinprom.append(1)
+                        else: modinprom.append(0)
+                    currstart += 1
+
+                if len(modinprom) == 0:
+                    regiongroups.append('0')
+                    continue
+
+                bestchunks = []
+                for j in range(0, len(modinprom) - 500, 100):
+                    modprob = modinprom[j:j + 500]
+                    bestchunks.append(sum(modprob)/len(modprob))
+                modprob = modinprom[max(0,len(modinprom)-500):len(modinprom)]
+                bestchunks.append(sum(modprob)/len(modprob))
+
+                chunksthreshold = 0.1 if threshold > 0.7*255 else 0.02
+                promopencode = 1 if max(bestchunks) >= chunksthreshold else 0
+                ###This is for R10 max(bestchunks) >= 0.02 else 0
+                ###This is for R9 max(bestchunks) >= 0.1 else 0
+                # print(promopencode, bestchunks)
+                regiongroups.append(str(promopencode))
+            thislabel = '.'.join(regiongroups)
+            clusterlabels.append(thislabel)
+            if args.a:  # want to predict nucleosomes for clusters
+                if thislabel not in clusterReads: clusterReads[thislabel] = [0 for x in range(plotrange)]
+                clusterReads[thislabel] = [x + y for x, y in zip(clusterReads[thislabel], thismat)]
+            if '.'.join(regiongroups) not in clustertoreads: clustertoreads['.'.join(regiongroups)] = 0
+            clustertoreads['.'.join(regiongroups)] += 1
+        for i in clustertoreads:
+            print(i, clustertoreads[i])
+
+    if args.k and not args.e:
+        clusterout = open(fileprefix + '-readnamesToClusters.tsv', 'w')
+        for i in range(len(readnames)):
+            clusterout.write(readnames[i] + '\t' + str(clusterlabels[i]) + '\n')
+        clusterout.close()
     print('done clustering')
+
 
 
 
@@ -243,58 +380,37 @@ combinedNucPred = []
 if args.a:
     clusterReads = [[key, item] for key, item in clusterReads.items()]
     threshold, lowthresh, posprob = getThreshFromFile(args.a)
-    # clab, cmat = [], []
-    # allcval = []
-    # clustersum =
     clusterReads.sort(key=lambda x:sum(x[1]))
     bestclust = [0 for x in range(plotrange)]
     for i in range(len(clusterReads)):
+        bestclust = [x+y for x, y in zip(bestclust, clusterReads[i][1])]
+
+        clusterReads[i][1] = [-1 if x < 0 else math.log2((x/40)+1) for x in clusterReads[i][1]]
+
         clustermax = max(clusterReads[i][1])
-        # clustersToReads[i] = [-1 if x < 0 else int((x/clustermax)*255) for x in clustersToReads[i]]
 
-        # if i < len(clusterReads) - 2:
-        #     bestclust = [x+int((y/clustermax)*255) for x, y in zip(bestclust, clusterReads[i][1])]
+        clusterReads[i][1] = [-1 if x < 0 else int((x / clustermax) * 255) for x in clusterReads[i][1]]
 
-        clusterReads[i][1] = [-1 if x < 0 else int(math.log2((x / clustermax)+1) * 255) for x in clusterReads[i][1]]
-
-        if i < len(clusterReads) - 2:
-            bestclust = [x+y for x, y in zip(bestclust, clusterReads[i][1])]
-
-        #\ln\left(\frac{x}{255}+1\right)\cdot255\cdot\left(\frac{1}{.693}\right)
-        # print(i, clustermax, clustersToReads[i])
-        # print(i, clusterReads[i][1][4100:4200])
-        # allcval += [x for x in clusterReads[i] if x > 0]
-    ###183, 199165
+    bestclust = [-1 if x < 0 else math.log2((x / 1000) + 1) for x in bestclust]
     bestclustmax = max(bestclust)
-    # bestclust = [-1 if x < 0 else int(math.log2((x / bestclustmax)+1) * 255) for x in bestclust]
     bestclust = [-1 if x < 0 else int((x / bestclustmax) * 255) for x in bestclust]
-    # plt.figure(figsize=(12, 3))
-    # plt.plot([x for x in range(plotrange)], bestclust)
-    # plt.savefig("combClusterScores.png", dpi=600)
-    # print('best', bestclust[4100:4200])
+
+    # bestclust = [-1 if x < 0 else int((x**2 / bestclustmax) * 255) for x in bestclust]
+    # bestclust = [-1 if x < 0 else (0.0626 * x) ** 2 for x in bestclust]
+    # bestclustmax = max(bestclust)
+    # bestclust = [-1 if x < 0 else int((x / bestclustmax) * 255) for x in bestclust]
+
     thisposprob = posprob - 0.1 if posprob - .1 > 0.5 else posprob + 0.1
-    print(thisclusterwindow)
-    bestprednuc = predictOpenChromatin([bestclust], plotrange, 30, lowthresh, threshold, thisposprob, False)
+    bestprednuc = predictOpenChromatin([bestclust], plotrange, 25, lowthresh, threshold, thisposprob, False)
     finalbestpred = predictNucleosomePos(bestprednuc, plotrange, True)
     thisposprob = 0.5 if posprob < 0.5 else posprob
     predictednuc = predictOpenChromatin([x[1] for x in clusterReads], plotrange, 25, lowthresh, threshold, thisposprob, False)
     finalnucpred = predictNucleosomePos(predictednuc, plotrange, True)
-    # print(len(finalnucpred))
-    # print(finalnucpred)
-    # plt.figure()
-    # plt.hist(allcval, 255)
-    # plt.savefig("clusterSumHist.png", dpi=600)
+
     for i in range(len(clusterReads)):
         clusterToNucPos[clusterReads[i][0]] = finalnucpred[i]
     combinedNucPred = finalbestpred[0]
     print('done predicting nucleosome positions for clusters')
-
-
-
-
-
-
-
 
 readToNucPos = {}
 if args.n and args.o:
@@ -324,7 +440,7 @@ if args.p or args.o:
     for z in range(len(modmatrix)):
         thesemods = modmatrix[z]
         nomodcolor = 1 if readdir[z] == '-' else 2
-        if not args.s: #smoothing allowed
+        if args.s == 'some': #smoothing allowed
             currColor = 0
             lasta, lastpos = 0, 0
             colbybp = [0 for x in range(plotrange)]
@@ -352,8 +468,25 @@ if args.p or args.o:
                 for j in range(thesebounds[0], thesebounds[1]):
                     if j < qend:
                         colbybp[j - qstart] = currColor  # codetocol[currColor]
-        elif args.t: # no smoothing
-            colbybp = [3 if thesemods[x] >= threshold else nomodcolor for x in range(plotrange)]
+        elif args.t: #thresholded
+            if args.s == 'none':
+                colbybp = [3 if thesemods[x] >= threshold else nomodcolor for x in range(plotrange)]
+            ###BELOW IS ACTUALLY ALTERNATE SMOOTHING METHOD
+            elif args.s == 'full':
+                colbybp = [0 for x in range(plotrange)]
+                i = 25
+                currstart = 0
+                while i < plotrange:
+                    modprob = thesemods[currstart:i]
+                    onlyAs = [x for x in modprob if x != -1]
+                    if len(onlyAs) >= 5:
+                        if sum(onlyAs)/len(onlyAs) >= threshold: currColor = 3
+                        else: currColor = nomodcolor
+                        for j in range(currstart, i):
+                            if colbybp[j] != 3: colbybp[j] = currColor
+                    i += 1
+                    currstart += 1
+
 
         if args.t: ###removing small bits of whitespace
             lastcol, laststart = 0, 0
@@ -379,49 +512,29 @@ if args.p or args.o:
         if not args.t:
             clusteravg[label] = savgol_filter(clusteravg[label], 15, 1)
         thismax = float(max(clusteravg[label]))
-        clusteravg[label] = [x/thismax for x in clusteravg[label]]
-    readcolbybp.sort(key=lambda x: [sum(clusteravg[x[0]]), -1* sum(x[1])])
-
-    # plt.figure()
-    # c = 0
-    # totreads = numclust * 4 + 1
-    # xaxis = [x+qstart for x in range(plotrange)]
-    # ticklocs, ticklabels = [], []
-    # for i in range(numclust):
-    #     # plt.plot(xaxis, [(totreads - c) + x + 0.2 for x in clusteravg[float(i)]], color='black')
-    #     # ticklocs.append(0.5 + totreads - c)
-    #     # ticklabels.append('Cluster ' + str(i) + '-nosmoothing')
-    #     # c += 1
-    #     for j in [15,20]:
-    #         for k in [1,2,3]:
-    #             smoothed = savgol_filter(clusteravg[float(i)], j, k)
-    #             plt.plot(xaxis, [(totreads - c) + x + 0.2 for x in smoothed], color='black')
-    #             ticklocs.append(0.5 + totreads - c)
-    #             ticklabels.append('Cluster ' + str(i) + '-' + str(j) + '-' + str(k))
-    #             c += 1
-    # plt.yticks(ticklocs, ticklabels, size='small')
-    # plt.savefig('-'.join([fileprefix, chr, str(qstart), str(qend)]) + '-diff-smoothing-on-clusters.png', dpi=600)
+        if thismax > 0:
+            clusteravg[label] = [x/thismax for x in clusteravg[label]]
+    readcolbybp.sort()#(key=lambda x: [sum(clusteravg[x[0]]), -1* sum(x[1])])
     print('done calculating cluster averages and smoothing if desired')
 
-genes = []
-if args.g: #and (args.p or args.o):
-    for line in open(args.g):
-        line = line.rstrip().split('\t')
-        if line[0].lstrip('chr') == chr.lstrip('chr'):
-            geneleft, generight = int(line[1]), int(line[2])
-            if geneleft < qstart and qstart < generight < qend: geneleft = qstart
-            elif qstart < geneleft < qend  and generight > qend: generight = qend
-            elif geneleft < qstart and generight > qend: geneleft, generight = qstart, qend
-            # if line[3] == 'PHO5': print(geneleft, generight, qstart, qend)
-            if geneleft >= qstart and generight <= qend:
-                # print(geneleft, generight, line[3])
-                mydircode = 2 if line[5] == '+' else 1
-                genes.append([geneleft, generight-geneleft, mydircode, line[3]])
-    print('done loading genes')
-    # print(genes)
+
+nucfrombedgraph = [0 for x in range(plotrange)]
+if args.d:
+    for line in open(args.d):
+        if line[:5] != 'track':
+            line = line.rstrip().split()
+            if line[0] == chr:
+                if qstart <= int(line[2]) < qend:
+                    nucfrombedgraph[int(line[2])-qstart] = float(line[3])
+    thismax = max(nucfrombedgraph)
+    nucfrombedgraph = [x/thismax for x in nucfrombedgraph]
+    # print(nucfrombedgraph)
+    print('done processing bedgraph file')
+
 
 if args.p: #plot mod pos
-    totreads = len(readcolbybp) + (numclust * 2 * 2) + len(genes)  # num clusters
+    totreads = len(readcolbybp) + (len(clusteravg) * 2) + len(genes)  # num clusters
+    if args.d: totreads += 2
     figheight = 100 if totreads/5 > 98 else 2+int(totreads/5)
     plt.figure(figsize = (12, figheight))
     ax = plt.axes(frameon=False)
@@ -441,6 +554,13 @@ if args.p: #plot mod pos
             plt.arrow(max((qstart, g[0]-int(plotrange/20))), 0.5+totreads-c, int(plotrange/20), 0, length_includes_head=True, head_width=0.3, head_length=int(plotrange/100), facecolor='black')
         elif g[2] == 1 and g[0] + g[1] < qend:
             plt.arrow(min((qend, g[0]+g[1]+int(plotrange/20))), 0.5+totreads-c, -1*int(plotrange/20), 0, length_includes_head=True, head_width=0.3, head_length=int(plotrange/100), facecolor='black')
+        c += 1
+
+    if args.d:
+        c += 1
+        plt.plot(xaxis, [(totreads-c)+(x * 1.6) + 0.2 for x in nucfrombedgraph], color='black')
+        ticklocs.append(0.5 + totreads - c)
+        ticklabels.append(args.d.split('/')[-1].split('.')[0])
         c += 1
 
     lastcluster = -2
@@ -489,6 +609,7 @@ if args.p: #plot mod pos
     plotname = [fileprefix, chr, str(qstart), str(qend), args.c + 'clusters']
     if args.t:
         plotname.append(str(args.t) + 'threshold')
+    plotname.append(args.s + 'Smoothing')
     plt.savefig('-'.join(plotname) + '-modifiedReads.pdf', format='pdf', dpi=600)
     print('done plotting modified reads')
 
@@ -497,8 +618,9 @@ if args.p: #plot mod pos
 
 
 if args.o: #plot mod pos with overlaid nucleosomes
-    totreads = len(readcolbybp) + (numclust * 2 * 2) + len(genes)  # num clusters
-    if args.a: totreads += numclust * 2 + 1
+    totreads = len(readcolbybp) + (len(clusteravg) * 2) + len(genes)  # num clusters
+    if args.a: totreads += len(clusteravg) * 2 + 1
+    if args.d: totreads += 2
     figheight = 100 if int(totreads/5) > 98 else int(totreads/5)+2
     plt.figure(figsize = (12, figheight))
     ax = plt.axes(frameon=False)
@@ -521,6 +643,14 @@ if args.o: #plot mod pos with overlaid nucleosomes
             plt.arrow(min((qend, g[0] + g[1] + int(plotrange / 20))), 0.5 + totreads - c, -1 * int(plotrange / 20), 0,
                       length_includes_head=True, head_width=0.3, head_length=int(plotrange / 100), facecolor='black')
         c += 1
+
+    if args.d:
+        c += 1
+        plt.plot(xaxis, [(totreads - c) + (x * 1.6) + 0.2 for x in nucfrombedgraph], color='black')
+        ticklocs.append(0.5 + totreads - c)
+        ticklabels.append(args.d.split('/')[-1].split('.')[0])
+        c += 1
+
     if args.a:
         for block in combinedNucPred:
             rectangle1 = mplpatches.Rectangle((block[0] + qstart, totreads - c), block[1], 0.9,
@@ -593,5 +723,6 @@ if args.o: #plot mod pos with overlaid nucleosomes
     plotname.append('modifiedReads')
     if args.n: plotname.append(args.n.split('_')[-1].split('.')[0])
     else: plotname.append('clusternucpred')
+    plotname.append(args.s+'Smoothing')
     plt.savefig('-'.join(plotname)  + '.pdf', format='pdf', dpi=600)
     print('done plotting modified reads overlaid with nucleosomes')
