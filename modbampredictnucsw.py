@@ -24,10 +24,12 @@ def getThreshFromFile(file):
     threshold, lowthresh, posprob = None, None, None
     for line in open(file):
         line = line.rstrip().split('\t')
-        if line[0] == 'predicted threshold:': threshold = int(float(line[1])*255)
+        if line[0] == 'predicted threshold:': 
+            threshold = int(float(line[1])*255)
+            t = float(line[1])
         elif line[0] == 'lowest possible threshold:': lowthresh = int(float(line[1])*255)
         elif line[0] == 'pos nuc prob above threshold:': posprob = float(line[1])
-    return threshold, lowthresh, posprob
+    return t, threshold, lowthresh, posprob
 
 
 
@@ -159,7 +161,7 @@ if __name__ == '__main__':
     qstart, qend = [int(x) for x in args.r[1].split('-')]
     plotrange = qend-qstart
 
-    threshold, lowthresh, posprob = getThreshFromFile(args.t)
+    t, threshold, lowthresh, posprob = getThreshFromFile(args.t)
 
     windowsize = int(args.w)
 
@@ -186,7 +188,7 @@ if __name__ == '__main__':
     finalnucpred = predictNucleosomePos(predictednuc, plotrange, not args.o)
     print('done predicting nucleosomes')
 
-    out = open(fileprefix + '_' + str(threshold) + 'threshold-predictednuc.bed', 'w')
+    out = open(fileprefix + '_' + str(t) + 'threshold-predictednuc.bed', 'w')
 
     for i in range(len(finalnucpred)):
         readname = readnames[i]
