@@ -188,7 +188,7 @@ if __name__ == '__main__':
     finalnucpred = predictNucleosomePos(predictednuc, plotrange, not args.o)
     print('done predicting nucleosomes')
 
-    out = open(fileprefix + '_' + str(t) + 'threshold-predictednuc.bed', 'w')
+    out = open(fileprefix + '-' + str(t) + 'threshold-predictednuc.bed', 'w')
 
     for i in range(len(finalnucpred)):
         readname = readnames[i]

@@ -721,7 +721,7 @@ if args.o: #plot mod pos with overlaid nucleosomes
     if args.t:
         plotname.append(str(args.t) + 'threshold')
     plotname.append('modifiedReads')
-    if args.n: plotname.append(args.n.split('_')[-1].split('.')[0])
+    if args.n: plotname.append(args.n.split('-')[-1].split('.')[0])
     else: plotname.append('clusternucpred')
     plotname.append(args.s+'Smoothing')
     plt.savefig('-'.join(plotname)  + '.pdf', format='pdf', dpi=600)
